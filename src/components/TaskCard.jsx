@@ -1,7 +1,6 @@
-
-import React from 'react';
-import { motion } from 'framer-motion';
-import { Calendar, MoreVertical, Paperclip, Copy, Save, Trash2, Clock, User, CheckCircle } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { motion, useAnimation } from 'framer-motion';
+import { Calendar, MoreVertical, Paperclip, Copy, Save, Trash2, Clock, User, CheckCircle, Tag } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -17,8 +16,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from '@/components/ui/button';
 
-const TaskCard = ({ task, onEdit, onDelete, onDuplicate, onSaveTemplate, draggable, onDragStart }) => {
+const TaskCard = ({ task, onEdit, onDelete, onDuplicate, onSaveTemplate, draggable, onDragStart, onDragEnd }) => {
   const { t } = useLanguage();
+  const controls = useAnimation();
   
   const priorityColors = {
     low: 'text-blue-400 bg-blue-400/10 border-blue-400/20',
@@ -49,15 +49,35 @@ const TaskCard = ({ task, onEdit, onDelete, onDuplicate, onSaveTemplate, draggab
       return p;
   };
 
+  // Implementação SHAKE TASKS
+  useEffect(() => {
+    // Se prioridade alta e não concluída
+    if (task.priority === 'high' && task.status !== 'done') {
+        const shake = async () => {
+            // Chacoalha sutilmente por aprox 2-3 segundos
+            await controls.start({ 
+                x: [0, -3, 3, -3, 3, 0], 
+                transition: { duration: 0.4, repeat: 5 } 
+            });
+        };
+        
+        shake();
+        // Repete a cada 30 minutos (configurável aqui)
+        const interval = setInterval(shake, 30 * 60 * 1000); 
+        return () => clearInterval(interval);
+    }
+  }, [task.priority, task.status, controls]);
+
   return (
     <motion.div
       layout
+      animate={controls}
       initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
       whileHover={{ scale: 1.02 }}
       draggable={draggable}
       onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       className={cn(
         "group relative border rounded-xl p-4 cursor-grab active:cursor-grabbing transition-all shadow-sm hover:shadow-md backdrop-blur-sm",
         cardStyle
@@ -65,7 +85,7 @@ const TaskCard = ({ task, onEdit, onDelete, onDuplicate, onSaveTemplate, draggab
       onClick={() => onEdit(task)}
     >
       <div className="flex justify-between items-start mb-3">
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
             <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full border uppercase tracking-wider", priorityColors[task.priority])}>
                 {getPriorityLabel(task.priority)}
             </span>
@@ -76,6 +96,27 @@ const TaskCard = ({ task, onEdit, onDelete, onDuplicate, onSaveTemplate, draggab
                 <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full border border-purple-500/30">
                     Modelo
                 </span>
+            )}
+             
+            {/* TAG DO RECURSO (Nova Implementação Visual) */}
+            {task.resource_tag && (
+                <div className="flex items-center gap-1 bg-purple-500/20 border border-purple-500/30 px-2 py-0.5 rounded-full" title={`Tag do Recurso: ${task.resource_tag}`}>
+                    <Tag className="w-3 h-3 text-purple-400" />
+                    <span className="text-[10px] font-bold text-purple-200 uppercase">{task.resource_tag}</span>
+                </div>
+            )}
+            
+            {/* Valor do Recurso (Se for monetário) */}
+            {task.resource_type === 'value' && task.resource_value && (
+               <span className="text-[10px] bg-green-900/40 text-green-300 px-2 py-0.5 rounded-full border border-green-500/30 font-mono">
+                  R$ {task.resource_value}
+               </span>
+            )}
+             {/* Tempo do Recurso (Se for horas) */}
+             {task.resource_type === 'time' && task.resource_time && (
+               <span className="text-[10px] bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded-full border border-blue-500/30 font-mono">
+                  {task.resource_time}h
+               </span>
             )}
         </div>
         

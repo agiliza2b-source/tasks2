@@ -1,8 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import { AuthProvider, useAuth } from '@/contexts/SupabaseAuthContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
+import { GlobalErrorProvider } from '@/components/GlobalErrorHandler'; // <--- Importe aqui
 import { Toaster } from '@/components/ui/toaster';
 import TaskManager from '@/components/TaskManager';
 import AuthForm from '@/components/AuthForm';
@@ -14,13 +15,12 @@ import { supabase } from '@/lib/customSupabaseClient';
 
 const AppContent = () => {
   const { user, loading: authLoading, signOut } = useAuth();
-  const [currentView, setCurrentView] = useState('preload'); // 'preload' | 'dashboard' | 'admin'
+  const [currentView, setCurrentView] = useState('preload'); 
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [appKey, setAppKey] = useState(0); 
   const [requireMfa, setRequireMfa] = useState(false);
   const [checkingMfa, setCheckingMfa] = useState(true);
 
-  // Check MFA Status whenever user logs in or auth state changes
   useEffect(() => {
     const checkMfaStatus = async () => {
        if (!user) {
@@ -30,7 +30,6 @@ const AppContent = () => {
        }
        
        try {
-           // 1. Check if user has enrolled factors
            const { data: factors } = await supabase.auth.mfa.listFactors();
            
            if (!factors || factors.totp.length === 0) {
@@ -39,7 +38,6 @@ const AppContent = () => {
                return;
            }
 
-           // 2. Check assurance level
            const { data: authLevel } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
            
            if (authLevel.currentLevel === 'aal1') {
@@ -56,7 +54,6 @@ const AppContent = () => {
 
     checkMfaStatus();
 
-    // Listen for MFA events (like successful challenge)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
         if (event === 'MFA_CHALLENGE_VERIFIED' || event === 'SIGNED_IN') {
              checkMfaStatus();
@@ -67,14 +64,11 @@ const AppContent = () => {
 
   }, [user]);
 
-  // View Routing Effect
   useEffect(() => {
     if (user && !requireMfa && !checkingMfa) {
       if (user.email === 'data@agiliza2b.com') {
         setCurrentView('admin');
       } else {
-        // Only reset to preload if we are not already navigating
-        // We keep the current view state unless explicitly logged out
         if (currentView === 'preload' && !selectedTaskId) {
             // Maintain preload
         } 
@@ -92,17 +86,14 @@ const AppContent = () => {
     );
   }
 
-  // Not logged in
   if (!user) {
     return <AuthForm />;
   }
 
-  // Logged in but needs MFA
   if (requireMfa) {
       return <MFAVerificationScreen onVerified={() => setRequireMfa(false)} />;
   }
 
-  // Admin View
   if (currentView === 'admin' && user.email === 'data@agiliza2b.com') {
      return (
         <AdminPanel 
@@ -112,7 +103,6 @@ const AppContent = () => {
      );
   }
 
-  // Preload Screen
   if (currentView === 'preload') {
     return (
       <PreloadScreen 
@@ -133,7 +123,6 @@ const AppContent = () => {
     );
   }
 
-  // Dashboard
   return (
     <TaskManager 
       key={`manager-${appKey}`}
@@ -146,16 +135,21 @@ const AppContent = () => {
 
 function App() {
   return (
-    <AuthProvider>
-      <LanguageProvider>
-        <Helmet>
-          <title>Agiliza2b - Gestão Inteligente de Tarefas</title>
-          <meta name="description" content="Sistema corporativo de gestão de tarefas Agiliza2b" />
-        </Helmet>
-        <AppContent />
-        <Toaster />
-      </LanguageProvider>
-    </AuthProvider>
+    // Adicionado GlobalErrorProvider aqui no topo
+    <GlobalErrorProvider>
+      <AuthProvider>
+        <LanguageProvider>
+          <ThemeProvider>
+            <Helmet>
+              <title>Agiliza2b - Gestão Inteligente de Tarefas</title>
+              <meta name="description" content="Sistema corporativo de gestão de tarefas Agiliza2b" />
+            </Helmet>
+            <AppContent />
+            <Toaster />
+          </ThemeProvider>
+        </LanguageProvider>
+      </AuthProvider>
+    </GlobalErrorProvider>
   );
 }
 

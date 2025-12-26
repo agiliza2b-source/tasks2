@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { X, Trash2, Clock, Copy, Save, Flag, CheckCircle2, User, Layout, Palette, FileInput, Activity } from 'lucide-react';
+import { X, Trash2, Clock, Copy, Save, Flag, CheckCircle2, User, Layout, Palette, FileInput, Activity, DollarSign, Timer, Tag } from 'lucide-react';
 import { Dialog, DialogContent, DialogClose } from '@/components/ui/dialog';
 import { 
   AlertDialog,
@@ -44,7 +43,11 @@ const TaskDialog = ({
     assigned_to: '',
     due_date: '',
     status: 'todo',
-    color: 'slate'
+    color: 'slate',
+    resource_type: 'none',
+    resource_value: '',
+    resource_time: '',
+    resource_tag: ''
   });
 
   useEffect(() => {
@@ -56,7 +59,11 @@ const TaskDialog = ({
         assigned_to: task.assigned_to || '',
         due_date: task.due_date ? task.due_date.split('T')[0] : '',
         status: task.status || 'todo',
-        color: task.color || 'slate'
+        color: task.color || 'slate',
+        resource_type: task.resource_type || 'none',
+        resource_value: task.resource_value || '',
+        resource_time: task.resource_time || '',
+        resource_tag: task.resource_tag || ''
       });
     } else {
       setFormData({
@@ -66,7 +73,11 @@ const TaskDialog = ({
         assigned_to: '',
         due_date: '',
         status: 'todo',
-        color: 'slate'
+        color: 'slate',
+        resource_type: 'none',
+        resource_value: '',
+        resource_time: '',
+        resource_tag: ''
       });
     }
   }, [task, open, columns]);
@@ -76,6 +87,13 @@ const TaskDialog = ({
     setFormData(newData);
     
     if (task && task.id) {
+       // Validação simples: Se tem recurso, exige tag. 
+       // Em auto-save, se faltar tag, não salva para não ficar inválido (ou poderia salvar parcial)
+       // Aqui optamos por não salvar se faltar tag para forçar preenchimento
+       if (newData.resource_type !== 'none' && !newData.resource_tag) {
+           return; 
+       }
+
        const submitData = {
         ...newData,
         id: task.id,
@@ -87,6 +105,10 @@ const TaskDialog = ({
 
   const handleCreateSubmit = (e) => {
     e.preventDefault();
+    if (formData.resource_type !== 'none' && !formData.resource_tag) {
+        alert("É obrigatório atribuir uma TAG ao Recurso do Tipo selecionado.");
+        return;
+    }
     const submitData = {
       ...formData,
       due_date: formData.due_date ? new Date(formData.due_date).toISOString() : null,
@@ -97,11 +119,11 @@ const TaskDialog = ({
   if (!task && open) {
     return (
        <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-lg">
+        <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-lg [&>button]:hidden">
           <form onSubmit={handleCreateSubmit} className="space-y-5 pt-4">
              <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold">{t('newTask')}</h2>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
                    {COLOR_PALETTE.slice(0, 5).map(c => (
                      <button
                        key={c.id}
@@ -115,6 +137,7 @@ const TaskDialog = ({
                        title={c.label}
                      />
                    ))}
+                   <DialogClose className="p-1 hover:bg-white/10 rounded-full ml-2"><X className="w-5 h-5"/></DialogClose>
                 </div>
              </div>
              
@@ -187,7 +210,7 @@ const TaskDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-slate-950 border-slate-800 text-white w-[98vw] h-[95vh] max-w-[1600px] p-0 flex flex-col overflow-hidden sm:rounded-xl shadow-2xl">
+      <DialogContent className="bg-slate-950 border-slate-800 text-white w-[98vw] h-[95vh] max-w-[1600px] p-0 flex flex-col overflow-hidden sm:rounded-xl shadow-2xl [&>button]:hidden">
         
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-slate-900 shrink-0">
           <div className="flex-1 mr-4 flex items-center gap-3">
@@ -416,6 +439,62 @@ const TaskDialog = ({
                         />
                       </div>
                     </div>
+
+                    {/* NOVO: Recurso do Tipo */}
+                    <div className="pt-4 border-t border-white/5 mt-4">
+                        <Label className="text-xs text-slate-500 uppercase tracking-wider mb-2 block font-bold text-blue-400">Recurso do Tipo</Label>
+                        <div className="space-y-3">
+                            <select 
+                                value={formData.resource_type}
+                                onChange={(e) => handleChange('resource_type', e.target.value)}
+                                className="w-full bg-slate-800 border-slate-700 rounded-lg p-2 text-sm text-white"
+                            >
+                                <option value="none">Nenhum</option>
+                                <option value="value">Valor (Monetário)</option>
+                                <option value="time">Tempo (Horas)</option>
+                            </select>
+
+                            {formData.resource_type === 'value' && (
+                                <div className="relative">
+                                    <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-green-500" />
+                                    <input 
+                                        type="number"
+                                        placeholder="0,00"
+                                        value={formData.resource_value}
+                                        onChange={(e) => handleChange('resource_value', e.target.value)}
+                                        className="w-full bg-slate-800 border-slate-700 rounded-lg p-2 pl-9 text-sm text-white"
+                                    />
+                                </div>
+                            )}
+
+                            {formData.resource_type === 'time' && (
+                                <div className="relative">
+                                    <Timer className="absolute left-3 top-2.5 w-4 h-4 text-blue-500" />
+                                    <input 
+                                        type="text"
+                                        placeholder="00:00"
+                                        value={formData.resource_time}
+                                        onChange={(e) => handleChange('resource_time', e.target.value)}
+                                        className="w-full bg-slate-800 border-slate-700 rounded-lg p-2 pl-9 text-sm text-white"
+                                    />
+                                </div>
+                            )}
+                            
+                            {/* Tags do Recurso (Obrigatório se recurso ativo) */}
+                            {formData.resource_type !== 'none' && (
+                                <div className="relative">
+                                     <Tag className="absolute left-3 top-2.5 w-4 h-4 text-purple-500" />
+                                     <input 
+                                        placeholder="Tag (Obrigatório)"
+                                        value={formData.resource_tag}
+                                        onChange={(e) => handleChange('resource_tag', e.target.value)}
+                                        className="w-full bg-slate-800 border-slate-700 rounded-lg p-2 pl-9 text-sm text-white border-l-4 border-l-purple-500"
+                                     />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
                  </div>
               </div>
 

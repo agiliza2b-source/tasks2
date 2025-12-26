@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Trash2, Settings, Plus, GripVertical, Pencil } from 'lucide-react';
 import TaskCard from '@/components/TaskCard';
@@ -40,7 +39,7 @@ const KanbanBoard = ({
     onMoveTask, 
     onDeleteColumn, 
     onUpdateColumn,
-    onAddColumn,
+    onAddColumn, 
     onReorderColumn
 }) => {
   const { user } = useAuth();
@@ -58,12 +57,30 @@ const KanbanBoard = ({
       id: null 
   });
 
+  // Time do Arrasta e Solta para exclusão
+  const [trashReady, setTrashReady] = useState(false); 
+  const trashTimerRef = useRef(null);
+
   // --- Task Dragging ---
   const handleTaskDragStart = (e, task) => {
     setDraggedTask(task);
+    setTrashReady(false);
     e.dataTransfer.setData('taskId', task.id);
     e.dataTransfer.effectAllowed = 'move';
     e.stopPropagation(); 
+    
+    // Inicia Timer de 1 segundo para habilitar lixeira
+    if(trashTimerRef.current) clearTimeout(trashTimerRef.current);
+    trashTimerRef.current = setTimeout(() => {
+        setTrashReady(true);
+    }, 1000);
+  };
+
+  const handleTaskDragEnd = () => {
+     setDraggedTask(null);
+     setTrashReady(false);
+     setIsHoveringTrash(false);
+     if(trashTimerRef.current) clearTimeout(trashTimerRef.current);
   };
 
   const handleTaskDrop = (e, columnId) => {
@@ -103,6 +120,10 @@ const KanbanBoard = ({
   const handleTrashDrop = async (e) => {
       e.preventDefault();
       setIsHoveringTrash(false);
+      
+      // Impede exclusão se soltar antes de 1 segundo
+      if (!trashReady && draggedTask) return;
+
       const taskId = e.dataTransfer.getData('taskId');
       const columnId = e.dataTransfer.getData('columnId');
 
@@ -166,18 +187,25 @@ const KanbanBoard = ({
 
   return (
     <div className="relative h-full flex flex-col">
-        {/* Bottom Drop Zone (Replaces Center Trash) */}
+        {/* Bottom Drop Zone with Timer Feedback */}
         <AnimatePresence>
             {(draggedTask || draggedColumn) && (
                 <div 
                     className="fixed inset-x-0 bottom-0 z-50 h-32 flex items-center justify-center bg-gradient-to-t from-red-900/80 to-transparent transition-all duration-300"
-                    onDragOver={(e) => { e.preventDefault(); setIsHoveringTrash(true); }}
+                    onDragOver={(e) => { 
+                        e.preventDefault(); 
+                        if(trashReady || draggedColumn) setIsHoveringTrash(true); 
+                    }}
                     onDragLeave={() => setIsHoveringTrash(false)}
                     onDrop={handleTrashDrop}
                 >
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0, scale: isHoveringTrash ? 1.1 : 1 }}
+                        animate={{ 
+                            opacity: (trashReady || draggedColumn) ? 1 : 0.5, 
+                            y: 0, 
+                            scale: isHoveringTrash ? 1.1 : 1 
+                        }}
                         exit={{ opacity: 0, y: 20 }}
                         className={cn(
                             "flex items-center gap-3 px-8 py-4 rounded-full border-2 transition-colors shadow-2xl backdrop-blur-md",
@@ -187,7 +215,9 @@ const KanbanBoard = ({
                         )}
                     >
                         <Trash2 className={cn("w-6 h-6", isHoveringTrash && "animate-bounce")} />
-                        <span className="font-bold text-lg">{t('dragToDelete')}</span>
+                        <span className="font-bold text-lg">
+                            {(!trashReady && draggedTask) ? "Segure para excluir..." : "Solte para Excluir"}
+                        </span>
                     </motion.div>
                 </div>
             )}
@@ -329,6 +359,7 @@ const KanbanBoard = ({
                         onSaveTemplate={onSaveTemplate}
                         draggable
                         onDragStart={(e) => handleTaskDragStart(e, task)}
+                        onDragEnd={handleTaskDragEnd}
                     />
                     ))}
                 </AnimatePresence>

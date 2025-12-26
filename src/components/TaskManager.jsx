@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Search, LayoutGrid, List, LogOut, Settings, ArrowLeft, Filter, User, DatabaseBackup, UploadCloud } from 'lucide-react';
+import { Plus, Search, LayoutGrid, List, LogOut, Settings, ArrowLeft, Filter, User, DatabaseBackup, UploadCloud, Palette } from 'lucide-react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import KanbanBoard from '@/components/KanbanBoard';
@@ -13,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { downloadBackup, decryptData } from '@/lib/utils';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import {
     Select,
     SelectContent,
@@ -35,19 +35,26 @@ const TaskManager = ({ initialShowAdmin = false, initialTaskId = null, onBackToP
   const { user, signOut } = useAuth();
   const { toast } = useToast();
   const { t } = useLanguage();
+  const { theme, setTheme } = useTheme();
   const fileInputRef = useRef(null);
+  const scrollContainerRef = useRef(null);
   
   const [viewMode, setViewMode] = useState('board');
   const [tasks, setTasks] = useState([]);
   const [columns, setColumns] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // Filtros
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all'); 
+  const [priorityFilter, setPriorityFilter] = useState('all');
+  const [responsibleFilter, setResponsibleFilter] = useState('');
   
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [showAdmin, setShowAdmin] = useState(initialShowAdmin);
   const [refreshUpdatesKey, setRefreshUpdatesKey] = useState(0);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   // Profile & Settings
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -60,6 +67,49 @@ const TaskManager = ({ initialShowAdmin = false, initialTaskId = null, onBackToP
       fetchUserProfile();
     }
   }, [user]);
+
+  // Atalhos de Teclado e Scroll Horizontal
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+        // Alt para mostrar dicas
+        if (e.key === 'Alt') setShowShortcuts(true);
+
+        // Ctrl + B (Barra de Pesquisa)
+        if (e.ctrlKey && (e.key === 'b' || e.key === 'B')) {
+            e.preventDefault();
+            document.getElementById('main-search-input')?.focus();
+        }
+        // Ctrl + N (Nova Tarefa)
+        if (e.ctrlKey && (e.key === 'n' || e.key === 'N')) {
+            e.preventDefault();
+            setEditingTask(null);
+            setIsTaskDialogOpen(true);
+        }
+    };
+
+    const handleKeyUp = (e) => {
+        if (e.key === 'Alt') setShowShortcuts(false);
+    };
+
+    // Scroll Horizontal com Ctrl + Scroll
+    const handleWheel = (e) => {
+        if (e.ctrlKey && scrollContainerRef.current) {
+             e.preventDefault();
+             scrollContainerRef.current.scrollLeft += e.deltaY;
+        }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    const container = scrollContainerRef.current;
+    if(container) container.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('keyup', handleKeyUp);
+        if(container) container.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
 
   // Handle Initial Task Open (Deep link from Preload)
   useEffect(() => {
@@ -436,7 +486,19 @@ const TaskManager = ({ initialShowAdmin = false, initialTaskId = null, onBackToP
         matchesType = task.status === 'todo';
     }
 
-    return matchesSearch && matchesType;
+    // Filtro de Prioridade
+    let matchesPriority = true;
+    if (priorityFilter !== 'all') {
+        matchesPriority = task.priority === priorityFilter;
+    }
+
+    // Filtro por Responsável
+    let matchesResponsible = true;
+    if (responsibleFilter.trim()) {
+        matchesResponsible = task.assigned_to && task.assigned_to.toLowerCase().includes(responsibleFilter.toLowerCase());
+    }
+
+    return matchesSearch && matchesType && matchesPriority && matchesResponsible;
   });
 
   if (showAdmin) {
@@ -445,8 +507,8 @@ const TaskManager = ({ initialShowAdmin = false, initialTaskId = null, onBackToP
 
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-white overflow-hidden">
-      <header className="h-16 border-b border-white/10 flex items-center justify-between px-6 bg-slate-900/50 backdrop-blur-md z-20">
-        <div className="flex items-center gap-4">
+      <header className="h-auto md:h-16 border-b border-white/10 flex flex-col md:flex-row items-center justify-between px-6 py-2 md:py-0 bg-slate-900/50 backdrop-blur-md z-20 gap-2">
+        <div className="flex items-center gap-4 w-full md:w-auto">
           <Button variant="ghost" size="icon" onClick={onBackToPreload} title={t('back')}>
             <ArrowLeft className="w-5 h-5 text-slate-400" />
           </Button>
@@ -466,63 +528,86 @@ const TaskManager = ({ initialShowAdmin = false, initialTaskId = null, onBackToP
                <img 
                   src="https://horizons-cdn.hostinger.com/118e3182-05e0-4d1d-9b06-3261c5b8b9c3/6434ac960d8fa2aa480449f700cc6ab9.png" 
                   alt="Agiliza Tasks 2b" 
-                  className="h-8 w-auto object-contain"
+                  className="h-8 w-auto object-contain hidden md:block"
               />
           </div>
         </div>
 
-        <div className="flex items-center gap-2 md:gap-4">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
           
-          {/* Filters */}
-          <div className="flex items-center gap-2">
-            <Select value={filterType} onValueChange={setFilterType}>
-                <SelectTrigger className="w-[140px] h-9 bg-slate-900/50 border-slate-700 text-xs">
-                    <Filter className="w-3.5 h-3.5 mr-2 text-slate-400" />
+          {/* Filtros */}
+           <Select value={filterType} onValueChange={setFilterType}>
+                <SelectTrigger className="w-[110px] h-8 bg-slate-900/50 border-slate-700 text-xs">
+                    <Filter className="w-3 h-3 mr-1.5 text-slate-400" />
                     <SelectValue placeholder={t('filter')} />
                 </SelectTrigger>
                 <SelectContent className="bg-slate-900 border-slate-700 text-white">
                     <SelectItem value="all">{t('all')}</SelectItem>
-                    <SelectItem value="overdue">{t('overdue')}</SelectItem>
-                    <SelectItem value="today">{t('today')}</SelectItem>
+                    <SelectItem value="overdue">Atrasadas</SelectItem>
+                    <SelectItem value="today">Hoje</SelectItem>
                     <SelectItem value="month">{t('thisMonth')}</SelectItem>
                     <SelectItem value="done">{t('doneFilter')}</SelectItem>
                     <SelectItem value="pending">{t('pendingFilter')}</SelectItem>
                 </SelectContent>
             </Select>
 
-            <div className="relative hidden md:block">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                <SelectTrigger className="w-[100px] h-8 bg-slate-900/50 border-slate-700 text-xs">
+                    <span className="mr-1.5 text-slate-400">Prior:</span>
+                    <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-900 border-slate-700 text-white">
+                    <SelectItem value="all">Todas</SelectItem>
+                    <SelectItem value="high">Alta</SelectItem>
+                    <SelectItem value="medium">Média</SelectItem>
+                    <SelectItem value="low">Baixa</SelectItem>
+                </SelectContent>
+            </Select>
+
+            <div className="relative hidden md:block w-32">
+                 <User className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                 <Input 
+                    placeholder="Responsável..."
+                    value={responsibleFilter}
+                    onChange={(e) => setResponsibleFilter(e.target.value)}
+                    className="h-8 bg-slate-900/50 border-slate-700 pl-7 text-xs"
+                 />
+            </div>
+
+            <div className="relative w-full md:w-40">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
                 <Input 
-                placeholder={t('searchPlaceholder')}
+                id="main-search-input"
+                placeholder="Pesquisar (Ctrl+B)"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-48 bg-slate-900/50 border-slate-700 pl-9 h-9 text-sm focus:ring-blue-500/50"
+                className="w-full bg-slate-900/50 border-slate-700 pl-8 h-8 text-xs focus:ring-blue-500/50"
                 />
             </div>
-          </div>
 
-          <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-800">
+          <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-800 hidden sm:flex">
             <button 
               onClick={() => setViewMode('board')}
               title={t('viewBoard')}
-              className={`p-1.5 rounded-md transition-all ${viewMode === 'board' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+              className={`p-1 rounded-md transition-all ${viewMode === 'board' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
             >
-              <LayoutGrid className="w-4 h-4" />
+              <LayoutGrid className="w-3.5 h-3.5" />
             </button>
             <button 
               onClick={() => setViewMode('list')}
               title={t('viewList')}
-              className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+              className={`p-1 rounded-md transition-all ${viewMode === 'list' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
             >
-              <List className="w-4 h-4" />
+              <List className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <Button onClick={() => { setEditingTask(null); setIsTaskDialogOpen(true); }} className="bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-900/20 whitespace-nowrap">
-            <Plus className="w-4 h-4 md:mr-2" /> <span className="hidden md:inline">{t('newTask')}</span>
+          <Button onClick={() => { setEditingTask(null); setIsTaskDialogOpen(true); }} className="h-8 bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-900/20 whitespace-nowrap text-xs relative group">
+            <Plus className="w-3 h-3 md:mr-1" /> <span className="hidden md:inline">{t('newTask')}</span>
+            {showShortcuts && <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-black/80 text-white text-[10px] px-2 py-1 rounded shadow-xl border border-white/10 z-50">Ctrl+N</span>}
           </Button>
 
-          <div className="h-6 w-px bg-white/10 mx-1 md:mx-2" />
+          <div className="h-6 w-px bg-white/10 mx-1 md:mx-2 hidden md:block" />
           
           {/* Hidden File Input for Restore */}
           <input 
@@ -535,12 +620,21 @@ const TaskManager = ({ initialShowAdmin = false, initialTaskId = null, onBackToP
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon">
-                    <Settings className="w-5 h-5 text-slate-400" />
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <Settings className="w-4 h-4 text-slate-400" />
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 bg-slate-900 border-slate-800 text-slate-200">
                 <DropdownMenuLabel>{t('settings')}</DropdownMenuLabel>
+                <DropdownMenuSeparator className="bg-slate-800" />
+
+                <DropdownMenuLabel className="text-xs font-normal text-slate-500 uppercase">Tema</DropdownMenuLabel>
+                <div className="grid grid-cols-4 gap-1 p-2">
+                    <button onClick={() => setTheme('dark')} className={`w-6 h-6 rounded-full bg-slate-900 border ${theme === 'dark' ? 'ring-2 ring-white' : 'border-slate-600'}`} title="Escuro (Padrão)"></button>
+                    <button onClick={() => setTheme('light')} className={`w-6 h-6 rounded-full bg-white border ${theme === 'light' ? 'ring-2 ring-blue-500' : 'border-slate-300'}`} title="Claro"></button>
+                    <button onClick={() => setTheme('blue')} className={`w-6 h-6 rounded-full bg-blue-900 border ${theme === 'blue' ? 'ring-2 ring-white' : 'border-blue-700'}`} title="Azul"></button>
+                    <button onClick={() => setTheme('fume')} className={`w-6 h-6 rounded-full bg-zinc-800 border ${theme === 'fume' ? 'ring-2 ring-white' : 'border-zinc-600'}`} title="Fumê"></button>
+                </div>
                 <DropdownMenuSeparator className="bg-slate-800" />
                 
                 <DropdownMenuItem onClick={() => setIsProfileOpen(true)} className="cursor-pointer hover:bg-slate-800">
@@ -574,7 +668,7 @@ const TaskManager = ({ initialShowAdmin = false, initialTaskId = null, onBackToP
       <main className="flex-1 overflow-hidden relative">
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none" />
         
-        <div className="h-full overflow-x-auto p-4 md:p-6">
+        <div ref={scrollContainerRef} className="h-full overflow-x-auto p-4 md:p-6 scroll-smooth">
           {viewMode === 'board' ? (
             <KanbanBoard 
               tasks={filteredTasks} 
